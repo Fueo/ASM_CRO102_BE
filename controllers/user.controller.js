@@ -107,8 +107,18 @@ const refreshToken = async (req, res) => {
 
 const logout = async (req, res) => {
     try {
-        // Ưu tiên lấy từ body, nếu không có thì lấy từ headers Authorization: Bearer <token>
-        const accessToken = req.body.accessToken || (req.headers.authorization && req.headers.authorization.split(' ')[1]);
+        // Lấy token chuẩn từ Header Authorization (cắt chữ 'Bearer ' đi)
+        const authHeader = req.headers.authorization;
+        let accessToken = null;
+
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            accessToken = authHeader.split(' ')[1];
+        }
+
+        // Nếu header không có, thử tìm trong body (đề phòng)
+        if (!accessToken && req.body && req.body.accessToken) {
+            accessToken = req.body.accessToken;
+        }
 
         if (!accessToken) {
             return res.status(400).json({

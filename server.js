@@ -4,18 +4,16 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const app = express();
 const userRoutes = require('./routes/user.route');
-
+const productRoutes = require('./routes/product.route');
+const categoryRoutes = require('./routes/category.route');
 app.use(cors());
 app.use(express.json());
 app.use('/api/users', userRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/categories', categoryRoutes);
 // health check (tuỳ chọn)
 app.get("/", (req, res) => res.json({ message: "API running" }));
 
-// error handler (tuỳ chọn)
-app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).json({ message: "server error", error: err.message });
-});
 
 const PORT = process.env.PORT || 5000;
 
