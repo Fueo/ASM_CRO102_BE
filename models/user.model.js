@@ -11,33 +11,43 @@ const userSchema = new mongoose.Schema(
             type: String,
             required: true,
             unique: true,
-            lowercase: true,
             trim: true,
+            lowercase: true,
         },
         hashedPassword: {
             type: String,
-            required: false,
+            default: null, // Null nếu đăng nhập bằng Google
         },
         phone: {
             type: String,
             trim: true,
             default: null,
         },
-        avatarURL: {
+        address: {
             type: String,
             trim: true,
+            default: null, // Bổ sung cột lưu địa chỉ
+        },
+        avatarURL: {
+            type: String,
+            default: null,
+        },
+        authProvider: {
+            type: String,
+            enum: ['local', 'google'],
+            default: 'local',
+        },
+        googleId: {
+            type: String,
             default: null,
         },
         hashedRefreshToken: {
             type: String,
             default: null,
         },
-        createdAt: {
-            type: Date,
-            default: Date.now,
-        },
     },
     {
+        timestamps: true,
         versionKey: false,
     }
 );

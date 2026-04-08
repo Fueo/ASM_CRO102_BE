@@ -1,15 +1,52 @@
 const mongoose = require('mongoose');
 const CartItem = require('../models/cartItem.model');
 const Product = require('../models/product.model');
+const ProductImage = require('../models/productImage.model'); // Đã thêm Model ProductImage
+
+// ============================================================================
+// HÀM HỖ TRỢ (HELPERS)
+// ============================================================================
 
 const calculateItemTotal = (unitPrice, quantity) => {
     return unitPrice * quantity;
 };
 
+// Hàm móc ảnh từ Collection ProductImage và nhét vào Product
+const attachImagesToCartItems = async (cartItems) => {
+    return await Promise.all(cartItems.map(async (item) => {
+        if (item.productId && item.productId._id) {
+            // 1. Tìm ảnh mặc định
+            let imageDoc = await ProductImage.findOne({
+                productId: item.productId._id,
+                isDefault: true
+            });
+
+            // 2. Nếu không có ảnh mặc định, lấy đại tấm đầu tiên
+            if (!imageDoc) {
+                imageDoc = await ProductImage.findOne({ productId: item.productId._id });
+            }
+
+            // 3. Gắn link ảnh vào object, nếu không có ảnh nào trong DB thì dùng ảnh No Image
+            item.productId.imageURL = imageDoc
+                ? imageDoc.imageURL
+                : 'https://via.placeholder.com/300x300?text=No+Image';
+        }
+        return item;
+    }));
+};
+
+// ============================================================================
+// LOGIC XỬ LÝ CHÍNH CỦA GIỎ HÀNG (SERVICES)
+// ============================================================================
+
 const getCartByUserId = async (userId) => {
-    const cartItems = await CartItem.find({ userId })
+    // Thêm .lean() để biến đổi thành Object thuần giúp dễ gắn thêm trường ảnh
+    let cartItems = await CartItem.find({ userId })
         .populate('productId')
         .lean();
+
+    // Gắn ảnh cho toàn bộ danh sách
+    cartItems = await attachImagesToCartItems(cartItems);
 
     const totalCartAmount = cartItems.reduce((sum, item) => {
         if (!item.isSelected) return sum;
@@ -53,6 +90,7 @@ const addToCart = async (userId, productId, quantity = 1) => {
     }
 
     const existingCartItem = await CartItem.findOne({ userId, productId });
+    let savedItemId;
 
     if (existingCartItem) {
         const newQuantity = existingCartItem.quantity + quantity;
@@ -67,25 +105,28 @@ const addToCart = async (userId, productId, quantity = 1) => {
         existingCartItem.total = calculateItemTotal(product.unitPrice, newQuantity);
 
         await existingCartItem.save();
+        savedItemId = existingCartItem._id;
+    } else {
+        if (quantity > product.stockQuantity) {
+            const error = new Error('Số lượng vượt quá tồn kho');
+            error.statusCode = 400;
+            throw error;
+        }
 
-        return await CartItem.findById(existingCartItem._id).populate('productId');
+        const cartItem = await CartItem.create({
+            userId,
+            productId,
+            quantity,
+            total: calculateItemTotal(product.unitPrice, quantity),
+            isSelected: true,
+        });
+        savedItemId = cartItem._id;
     }
 
-    if (quantity > product.stockQuantity) {
-        const error = new Error('Số lượng vượt quá tồn kho');
-        error.statusCode = 400;
-        throw error;
-    }
-
-    const cartItem = await CartItem.create({
-        userId,
-        productId,
-        quantity,
-        total: calculateItemTotal(product.unitPrice, quantity),
-        isSelected: true,
-    });
-
-    return await CartItem.findById(cartItem._id).populate('productId');
+    // Lấy item vừa lưu, populate và gắn ảnh trước khi trả về
+    const populatedItem = await CartItem.findById(savedItemId).populate('productId').lean();
+    const resultWithImage = await attachImagesToCartItems([populatedItem]);
+    return resultWithImage[0];
 };
 
 const updateCartItemQuantity = async (userId, cartItemId, quantity) => {
@@ -128,7 +169,10 @@ const updateCartItemQuantity = async (userId, cartItemId, quantity) => {
 
     await cartItem.save();
 
-    return await CartItem.findById(cartItem._id).populate('productId');
+    // Trả về item đã update kèm ảnh
+    const populatedItem = await CartItem.findById(cartItem._id).populate('productId').lean();
+    const resultWithImage = await attachImagesToCartItems([populatedItem]);
+    return resultWithImage[0];
 };
 
 const toggleCartItemSelection = async (userId, cartItemId, isSelected) => {
@@ -142,7 +186,7 @@ const toggleCartItemSelection = async (userId, cartItemId, isSelected) => {
         { _id: cartItemId, userId },
         { isSelected },
         { new: true }
-    ).populate('productId');
+    ).populate('productId').lean(); // Dùng lean để dễ gắn ảnh
 
     if (!cartItem) {
         const error = new Error('Cart item không tồn tại');
@@ -150,7 +194,16 @@ const toggleCartItemSelection = async (userId, cartItemId, isSelected) => {
         throw error;
     }
 
-    return cartItem;
+    // Trả về item kèm ảnh
+    const resultWithImage = await attachImagesToCartItems([cartItem]);
+    return resultWithImage[0];
+};
+
+const toggleAllCartItemsSelection = async (userId, isSelected) => {
+    await CartItem.updateMany({ userId }, { isSelected });
+
+    // Tái sử dụng hàm getCartByUserId (hàm này đã có sẵn logic móc ảnh)
+    return await getCartByUserId(userId);
 };
 
 const removeCartItem = async (userId, cartItemId) => {
@@ -183,12 +236,6 @@ const clearSelectedCartItems = async (userId) => {
     return {
         deletedCount: result.deletedCount,
     };
-};
-
-const toggleAllCartItemsSelection = async (userId, isSelected) => {
-    await CartItem.updateMany({ userId }, { isSelected });
-
-    return await getCartByUserId(userId);
 };
 
 module.exports = {

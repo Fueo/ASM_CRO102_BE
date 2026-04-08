@@ -6,12 +6,14 @@ const { generateAccessToken, generateRefreshToken } = require('../utils/jwt');
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+// Đã bổ sung address vào object trả về
 const sanitizeUser = (user) => {
     return {
         _id: user._id,
         name: user.name,
         email: user.email,
         phone: user.phone,
+        address: user.address,
         avatarURL: user.avatarURL,
         authProvider: user.authProvider,
         createdAt: user.createdAt,
@@ -109,22 +111,12 @@ const loginWithGoogle = async ({ idToken }) => {
             hashedPassword: null,
         });
     } else {
-        if (!user.googleId) {
-            user.googleId = googleId;
-        }
-
-        if (!user.avatarURL && picture) {
-            user.avatarURL = picture;
-        }
-
-        if (!user.name && name) {
-            user.name = name;
-        }
-
+        if (!user.googleId) user.googleId = googleId;
+        if (!user.avatarURL && picture) user.avatarURL = picture;
+        if (!user.name && name) user.name = name;
         if (user.authProvider !== 'google' && !user.hashedPassword) {
             user.authProvider = 'google';
         }
-
         await user.save();
     }
 
@@ -198,7 +190,6 @@ const logout = async ({ accessToken }) => {
 
     let decoded;
     try {
-        // Sử dụng ignoreExpiration để cho phép logout kể cả khi token vừa hết hạn
         decoded = jwt.verify(accessToken, process.env.JWT_ACCESS_SECRET, { ignoreExpiration: true });
     } catch (error) {
         throw new Error('Access token không hợp lệ');
@@ -209,7 +200,6 @@ const logout = async ({ accessToken }) => {
         throw new Error('Không tìm thấy user');
     }
 
-    // Xóa refresh token để bắt buộc đăng nhập lại
     user.hashedRefreshToken = null;
     await user.save();
 
@@ -219,12 +209,42 @@ const logout = async ({ accessToken }) => {
 };
 
 const getProfile = async (userId) => {
-    const user = await User.findById(userId).select('-hashedPassword -hashedRefreshToken');
+    const user = await User.findById(userId);
     if (!user) {
         throw new Error('Không tìm thấy user');
     }
 
-    return user;
+    return sanitizeUser(user);
+};
+
+// ==========================================
+// HÀM CẬP NHẬT THÔNG TIN NGƯỜI DÙNG (MỚI)
+// ==========================================
+const updateProfile = async (userId, updateData) => {
+    const { name, email, address, phone } = updateData;
+
+    const user = await User.findById(userId);
+    if (!user) {
+        throw new Error('Không tìm thấy user');
+    }
+
+    // Nếu đổi email, kiểm tra trùng lặp
+    if (email && email !== user.email) {
+        const existingEmail = await User.findOne({ email });
+        if (existingEmail) {
+            throw new Error('Email này đã được sử dụng bởi tài khoản khác');
+        }
+        user.email = email;
+    }
+
+    // Cập nhật các trường còn lại
+    if (name) user.name = name;
+    if (address !== undefined) user.address = address;
+    if (phone !== undefined) user.phone = phone;
+
+    await user.save();
+
+    return sanitizeUser(user);
 };
 
 module.exports = {
@@ -234,4 +254,5 @@ module.exports = {
     refreshUserToken,
     logout,
     getProfile,
+    updateProfile, // Export hàm mới
 };

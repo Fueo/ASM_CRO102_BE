@@ -7,13 +7,15 @@ const userRoutes = require('./routes/user.route');
 const productRoutes = require('./routes/product.route');
 const categoryRoutes = require('./routes/category.route');
 const cartRoutes = require('./routes/cart.route');
+const orderRoutes = require('./routes/order.route');
 app.use(cors());
 app.use(express.json());
 app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/cart', cartRoutes);
-// health check (tuỳ chọn)
+app.use('/api/orders', orderRoutes);
+
 app.get("/", (req, res) => res.json({ message: "API running" }));
 
 

@@ -4,35 +4,22 @@ const register = async (req, res) => {
     try {
         const { name, email, password, phone } = req.body;
 
-        // 1. Kiểm tra xem có nhập đầy đủ không
         if (!name || !email || !password) {
-            return res.status(400).json({
-                message: 'name, email và password là bắt buộc',
-            });
+            return res.status(400).json({ message: 'name, email và password là bắt buộc' });
         }
 
-        // 2. Kiểm tra mật khẩu phải có lớn hơn 6 ký tự (ít nhất 6 ký tự)
         if (password.length < 6) {
-            return res.status(400).json({
-                message: 'Mật khẩu quá ngắn, vui lòng nhập ít nhất 6 ký tự',
-            });
+            return res.status(400).json({ message: 'Mật khẩu quá ngắn, vui lòng nhập ít nhất 6 ký tự' });
         }
 
-        const result = await userService.register({
-            name,
-            email,
-            password,
-            phone,
-        });
+        const result = await userService.register({ name, email, password, phone });
 
         return res.status(201).json({
             message: 'Đăng ký thành công',
             data: result,
         });
     } catch (error) {
-        return res.status(400).json({
-            message: error.message || 'Đăng ký thất bại',
-        });
+        return res.status(400).json({ message: error.message || 'Đăng ký thất bại' });
     }
 };
 
@@ -41,9 +28,7 @@ const login = async (req, res) => {
         const { email, password } = req.body;
 
         if (!email || !password) {
-            return res.status(400).json({
-                message: 'email và password là bắt buộc',
-            });
+            return res.status(400).json({ message: 'email và password là bắt buộc' });
         }
 
         const result = await userService.login({ email, password });
@@ -53,9 +38,7 @@ const login = async (req, res) => {
             data: result,
         });
     } catch (error) {
-        return res.status(400).json({
-            message: error.message || 'Đăng nhập thất bại',
-        });
+        return res.status(400).json({ message: error.message || 'Đăng nhập thất bại' });
     }
 };
 
@@ -64,9 +47,7 @@ const loginWithGoogle = async (req, res) => {
         const { idToken } = req.body;
 
         if (!idToken) {
-            return res.status(400).json({
-                message: 'idToken là bắt buộc',
-            });
+            return res.status(400).json({ message: 'idToken là bắt buộc' });
         }
 
         const result = await userService.loginWithGoogle({ idToken });
@@ -76,9 +57,7 @@ const loginWithGoogle = async (req, res) => {
             data: result,
         });
     } catch (error) {
-        return res.status(400).json({
-            message: error.message || 'Đăng nhập Google thất bại',
-        });
+        return res.status(400).json({ message: error.message || 'Đăng nhập Google thất bại' });
     }
 };
 
@@ -87,9 +66,7 @@ const refreshToken = async (req, res) => {
         const { refreshToken } = req.body;
 
         if (!refreshToken) {
-            return res.status(400).json({
-                message: 'refreshToken là bắt buộc',
-            });
+            return res.status(400).json({ message: 'refreshToken là bắt buộc' });
         }
 
         const result = await userService.refreshUserToken({ refreshToken });
@@ -99,15 +76,12 @@ const refreshToken = async (req, res) => {
             data: result,
         });
     } catch (error) {
-        return res.status(401).json({
-            message: error.message || 'Làm mới token thất bại',
-        });
+        return res.status(401).json({ message: error.message || 'Làm mới token thất bại' });
     }
 };
 
 const logout = async (req, res) => {
     try {
-        // Lấy token chuẩn từ Header Authorization (cắt chữ 'Bearer ' đi)
         const authHeader = req.headers.authorization;
         let accessToken = null;
 
@@ -115,15 +89,12 @@ const logout = async (req, res) => {
             accessToken = authHeader.split(' ')[1];
         }
 
-        // Nếu header không có, thử tìm trong body (đề phòng)
         if (!accessToken && req.body && req.body.accessToken) {
             accessToken = req.body.accessToken;
         }
 
         if (!accessToken) {
-            return res.status(400).json({
-                message: 'accessToken là bắt buộc',
-            });
+            return res.status(400).json({ message: 'accessToken là bắt buộc' });
         }
 
         const result = await userService.logout({ accessToken });
@@ -132,9 +103,7 @@ const logout = async (req, res) => {
             message: result.message,
         });
     } catch (error) {
-        return res.status(400).json({
-            message: error.message || 'Đăng xuất thất bại',
-        });
+        return res.status(400).json({ message: error.message || 'Đăng xuất thất bại' });
     }
 };
 
@@ -147,9 +116,28 @@ const getMe = async (req, res) => {
             data: user,
         });
     } catch (error) {
-        return res.status(404).json({
-            message: error.message || 'Không lấy được thông tin user',
+        return res.status(404).json({ message: error.message || 'Không lấy được thông tin user' });
+    }
+};
+
+// ==========================================
+// CẬP NHẬT THÔNG TIN NGƯỜI DÙNG (MỚI)
+// ==========================================
+const updateProfile = async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        const { name, email, address, phone } = req.body;
+
+        const updatedUser = await userService.updateProfile(userId, {
+            name, email, address, phone
         });
+
+        return res.status(200).json({
+            message: 'Cập nhật thông tin thành công',
+            data: updatedUser,
+        });
+    } catch (error) {
+        return res.status(400).json({ message: error.message || 'Cập nhật thông tin thất bại' });
     }
 };
 
@@ -160,4 +148,5 @@ module.exports = {
     refreshToken,
     logout,
     getMe,
+    updateProfile, // Export controller mới
 };
