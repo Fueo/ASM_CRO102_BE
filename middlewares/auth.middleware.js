@@ -11,10 +11,18 @@ const authMiddleware = (req, res, next) => {
         }
 
         const token = authHeader.split(' ')[1];
-
         const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
 
-        req.user = decoded;
+        req.user = {
+            id: decoded.userId || decoded.id || decoded._id,
+            ...decoded,
+        };
+
+        if (!req.user.id) {
+            return res.status(401).json({
+                message: 'Token không chứa thông tin người dùng hợp lệ',
+            });
+        }
 
         next();
     } catch (error) {

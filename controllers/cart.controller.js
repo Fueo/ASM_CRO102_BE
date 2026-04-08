@@ -1,8 +1,18 @@
 const cartService = require('../services/cart.service');
 
+const getUserIdFromRequest = (req) => {
+    return req.user?.id || req.user?.userId || req.user?._id;
+};
+
 const getMyCart = async (req, res) => {
     try {
-        const userId = req.user.id || req.user._id;
+        const userId = getUserIdFromRequest(req);
+
+        if (!userId) {
+            return res.status(401).json({
+                message: 'Không xác định được người dùng',
+            });
+        }
 
         const cart = await cartService.getCartByUserId(userId);
 
@@ -19,7 +29,14 @@ const getMyCart = async (req, res) => {
 
 const addProductToCart = async (req, res) => {
     try {
-        const userId = req.user.id || req.user._id;
+        const userId = getUserIdFromRequest(req);
+
+        if (!userId) {
+            return res.status(401).json({
+                message: 'Không xác định được người dùng',
+            });
+        }
+
         const { productId, quantity } = req.body;
 
         const cartItem = await cartService.addToCart(userId, productId, quantity);
@@ -37,7 +54,14 @@ const addProductToCart = async (req, res) => {
 
 const updateCartItemQuantity = async (req, res) => {
     try {
-        const userId = req.user.id || req.user._id;
+        const userId = getUserIdFromRequest(req);
+
+        if (!userId) {
+            return res.status(401).json({
+                message: 'Không xác định được người dùng',
+            });
+        }
+
         const { cartItemId } = req.params;
         const { quantity } = req.body;
 
@@ -60,7 +84,14 @@ const updateCartItemQuantity = async (req, res) => {
 
 const toggleCartItemSelection = async (req, res) => {
     try {
-        const userId = req.user.id || req.user._id;
+        const userId = getUserIdFromRequest(req);
+
+        if (!userId) {
+            return res.status(401).json({
+                message: 'Không xác định được người dùng',
+            });
+        }
+
         const { cartItemId } = req.params;
         const { isSelected } = req.body;
 
@@ -83,7 +114,14 @@ const toggleCartItemSelection = async (req, res) => {
 
 const toggleAllCartItemsSelection = async (req, res) => {
     try {
-        const userId = req.user.id || req.user._id;
+        const userId = getUserIdFromRequest(req);
+
+        if (!userId) {
+            return res.status(401).json({
+                message: 'Không xác định được người dùng',
+            });
+        }
+
         const { isSelected } = req.body;
 
         const cart = await cartService.toggleAllCartItemsSelection(userId, isSelected);
@@ -101,7 +139,14 @@ const toggleAllCartItemsSelection = async (req, res) => {
 
 const removeCartItem = async (req, res) => {
     try {
-        const userId = req.user.id || req.user._id;
+        const userId = getUserIdFromRequest(req);
+
+        if (!userId) {
+            return res.status(401).json({
+                message: 'Không xác định được người dùng',
+            });
+        }
+
         const { cartItemId } = req.params;
 
         await cartService.removeCartItem(userId, cartItemId);
@@ -118,7 +163,13 @@ const removeCartItem = async (req, res) => {
 
 const clearSelectedCartItems = async (req, res) => {
     try {
-        const userId = req.user.id || req.user._id;
+        const userId = getUserIdFromRequest(req);
+
+        if (!userId) {
+            return res.status(401).json({
+                message: 'Không xác định được người dùng',
+            });
+        }
 
         const result = await cartService.clearSelectedCartItems(userId);
 
