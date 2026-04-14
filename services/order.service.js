@@ -2,20 +2,45 @@ const Order = require('../models/order.model');
 const OrderDetail = require('../models/orderDetail.model');
 const CartItem = require('../models/cartItem.model');
 const Product = require('../models/product.model');
+const ProductImage = require('../models/productImage.model'); // 1. IMPORT THÊM BẢNG ẢNH
 const mongoose = require('mongoose');
+
+// ==========================================
+// HÀM HỖ TRỢ: LẤY ẢNH TỪ BẢNG PRODUCT IMAGE
+// ==========================================
+const attachImagesToOrderDetails = async (orderDetails) => {
+    return await Promise.all(orderDetails.map(async (detail) => {
+        if (detail.productId && detail.productId._id) {
+            // 1. Tìm ảnh mặc định
+            let imageDoc = await ProductImage.findOne({
+                productId: detail.productId._id,
+                isDefault: true
+            });
+
+            // 2. Nếu không có ảnh mặc định, lấy đại tấm đầu tiên
+            if (!imageDoc) {
+                imageDoc = await ProductImage.findOne({ productId: detail.productId._id });
+            }
+
+            // 3. Gắn link ảnh vào object productId
+            detail.productId.imageURL = imageDoc
+                ? imageDoc.imageURL
+                : 'https://via.placeholder.com/300x300?text=No+Image';
+        }
+        return detail;
+    }));
+};
 
 // ==========================================
 // 1. TẠO ĐƠN HÀNG TỪ GIỎ HÀNG
 // ==========================================
 const createOrderFromCart = async (userId, orderData) => {
-    // Dùng Session (Transaction) để đảm bảo an toàn dữ liệu: Nếu 1 bước lỗi, toàn bộ sẽ bị hủy
     const session = await mongoose.startSession();
     session.startTransaction();
 
     try {
         const { name, email, address, phone, shippingMethod, paymentMethod } = orderData;
 
-        // 1. Lấy tất cả CartItem ĐANG ĐƯỢC CHỌN của User này
         const selectedCartItems = await CartItem.find({ userId, isSelected: true })
             .populate('productId')
             .session(session);
@@ -24,38 +49,29 @@ const createOrderFromCart = async (userId, orderData) => {
             throw new Error('Không có sản phẩm nào được chọn để thanh toán');
         }
 
-        // 2. Tính toán tiền và kiểm tra tồn kho
         let subTotal = 0;
         const orderDetailsData = [];
 
         for (const item of selectedCartItems) {
             const product = item.productId;
 
-            // Check tồn kho
             if (product.stockQuantity < item.quantity) {
                 throw new Error(`Sản phẩm "${product.name}" không đủ số lượng trong kho`);
             }
 
-            // Cộng dồn tiền hàng
             subTotal += product.unitPrice * item.quantity;
 
-            // Chuẩn bị data cho OrderDetail
             orderDetailsData.push({
                 productId: product._id,
                 quantity: item.quantity,
                 unitPrice: product.unitPrice,
                 total: product.unitPrice * item.quantity
             });
-
-            // (Tùy chọn) Trừ số lượng tồn kho của Product ngay lúc tạo đơn
-            // await Product.findByIdAndUpdate(product._id, { $inc: { stockQuantity: -item.quantity } }, { session });
         }
 
-        // 3. Tính phí vận chuyển và tổng hóa đơn
         const shippingFee = shippingMethod === 'fast' ? 15000 : 20000;
         const finalTotal = subTotal + shippingFee;
 
-        // 4. Tạo Order (Bảng cha)
         const newOrder = await Order.create([{
             name,
             email,
@@ -67,29 +83,25 @@ const createOrderFromCart = async (userId, orderData) => {
             total: finalTotal,
             userId,
             status: 'pending',
-            paymentStatus: 'unpaid' // Nếu là Visa có thể đổi logic sau khi thanh toán cổng
+            paymentStatus: 'unpaid'
         }], { session });
 
         const createdOrder = newOrder[0];
 
-        // 5. Gắn OrderID vào các OrderDetail và lưu (Bảng con)
         const detailsToInsert = orderDetailsData.map(detail => ({
             ...detail,
             orderId: createdOrder._id
         }));
         await OrderDetail.insertMany(detailsToInsert, { session });
 
-        // 6. XÓA CÁC SẢN PHẨM KHỎI GIỎ HÀNG (vì đã mua xong)
         await CartItem.deleteMany({ userId, isSelected: true }, { session });
 
-        // Hoàn tất Transaction
         await session.commitTransaction();
         session.endSession();
 
         return createdOrder;
 
     } catch (error) {
-        // Nếu có bất kỳ lỗi gì xảy ra, Rollback toàn bộ
         await session.abortTransaction();
         session.endSession();
         error.statusCode = error.statusCode || 400;
@@ -101,19 +113,28 @@ const createOrderFromCart = async (userId, orderData) => {
 // 2. LẤY LỊCH SỬ ĐƠN HÀNG CỦA USER
 // ==========================================
 const getUserOrders = async (userId) => {
-    // Tìm các order của user, sắp xếp mới nhất lên đầu
     const orders = await Order.find({ userId })
         .sort({ createdAt: -1 })
         .lean();
 
-    return orders;
+    const ordersWithDetails = await Promise.all(orders.map(async (order) => {
+        let items = await OrderDetail.find({ orderId: order._id })
+            .populate('productId')
+            .lean();
+
+        // 2. GỌI HÀM GẮN ẢNH VÀO ĐÂY
+        items = await attachImagesToOrderDetails(items);
+
+        return { ...order, items };
+    }));
+
+    return ordersWithDetails;
 };
 
 // ==========================================
 // 3. LẤY CHI TIẾT 1 ĐƠN HÀNG
 // ==========================================
 const getOrderDetails = async (userId, orderId) => {
-    // Kiểm tra Order có tồn tại và thuộc về User này không
     const order = await Order.findOne({ _id: orderId, userId }).lean();
 
     if (!order) {
@@ -122,10 +143,12 @@ const getOrderDetails = async (userId, orderId) => {
         throw error;
     }
 
-    // Lấy danh sách sản phẩm trong đơn hàng đó
-    const details = await OrderDetail.find({ orderId })
-        .populate('productId', 'name imageURL size origin') // Lấy thêm ảnh và tên từ bảng Product
+    let details = await OrderDetail.find({ orderId })
+        .populate('productId', 'name size origin stockQuantity unitPrice') // Xóa chữ imageURL ở đây đi vì nó ko có trong Product
         .lean();
+
+    // 3. GỌI HÀM GẮN ẢNH VÀO ĐÂY
+    details = await attachImagesToOrderDetails(details);
 
     return {
         ...order,
